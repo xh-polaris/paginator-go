@@ -18,6 +18,14 @@ const (
 	defaultExpire = time.Minute * 5
 )
 
+var copierOpt = &copier.Option{Converters: []copier.TypeConverter{{
+	SrcType: primitive.ObjectID{},
+	DstType: copier.String,
+	Fn: func(src interface{}) (interface{}, error) {
+		return src.(primitive.ObjectID).Hex(), nil
+	},
+}}}
+
 type Store interface {
 	GetSorter() any
 	LoadSorter(ctx context.Context, lastToken string, backward bool) error
@@ -68,13 +76,7 @@ func (s *CacheStore) StoreSorter(ctx context.Context, lastToken *string, first, 
 		*lastToken = uuid.New().String()
 	}
 	front := reflect.New(s.sorterType).Interface()
-	err := copier.CopyWithOption(front, first, copier.Option{Converters: []copier.TypeConverter{{
-		SrcType: primitive.ObjectID{},
-		DstType: copier.String,
-		Fn: func(src interface{}) (interface{}, error) {
-			return src.(primitive.ObjectID).Hex(), nil
-		},
-	}}})
+	err := copier.CopyWithOption(front, first, *copierOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -85,13 +87,7 @@ func (s *CacheStore) StoreSorter(ctx context.Context, lastToken *string, first, 
 	}
 
 	back := reflect.New(s.sorterType).Interface()
-	err = copier.CopyWithOption(back, last, copier.Option{Converters: []copier.TypeConverter{{
-		SrcType: primitive.ObjectID{},
-		DstType: copier.String,
-		Fn: func(src interface{}) (interface{}, error) {
-			return src.(primitive.ObjectID).Hex(), nil
-		},
-	}}})
+	err = copier.CopyWithOption(back, last, *copierOpt)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +133,18 @@ func (s *RawStore) LoadSorter(_ context.Context, lastToken string, backward bool
 }
 
 func (s *RawStore) StoreSorter(_ context.Context, lastToken *string, first, last any) (*string, error) {
-	bytes, err := json.Marshal([2]any{first, last})
+	front := reflect.New(s.sorterType).Interface()
+	err := copier.CopyWithOption(front, first, *copierOpt)
+	if err != nil {
+		return nil, err
+	}
+	back := reflect.New(s.sorterType).Interface()
+	err = copier.CopyWithOption(back, last, *copierOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	bytes, err := json.Marshal([2]any{front, back})
 	if err != nil {
 		return nil, err
 	}
